@@ -1,0 +1,580 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+local Config = {
+    Enabled = true,
+    Target = nil,
+    Smoothness = 0.600,
+    Prediction = 0.085,
+    WallCheck = true,
+    Visible = true,
+    TargetPart = "HumanoidRootPart",
+    ActivationMode = "Right Mouse Click",
+    MainColor = Color3.fromRGB(35, 37, 161),
+    Hue = 0.664, Sat = 0.783, Val = 0.631,
+    SearchText = "",
+    SelectedPlayers = {}, -- Stores UserIDs of players to track
+    IsHolding = false,
+    IsInteracting = false
+}
+
+local KeyMap = {
+    ["Right Mouse Click"] = Enum.UserInputType.MouseButton2,
+    ["Left Mouse Click"] = Enum.UserInputType.MouseButton1,
+    ["E"] = Enum.KeyCode.E,
+    ["F"] = Enum.KeyCode.F
+}
+
+-- // UI UTILITIES
+local function addOutline(obj)
+    local s = Instance.new("UIStroke")
+    s.Thickness = 1.8
+    s.Color = Color3.new(0, 0, 0)
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+    s.Parent = obj
+end
+
+-- // MAIN UI STRUCTURE
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "DHL_V3_System"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 860, 0, 540)
+MainFrame.Position = UDim2.new(0.5, -430, 0.5, -270)
+MainFrame.BackgroundColor3 = Color3.new(1, 1, 1)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 15)
+
+local BGGradient = Instance.new("UIGradient")
+BGGradient.Rotation = 45
+BGGradient.Parent = MainFrame
+
+-- Create a smooth, rounded glow holder using a container frame
+local GlowHolder = Instance.new("Frame")
+GlowHolder.Name = "GlowHolder"
+GlowHolder.BackgroundTransparency = 1
+-- Tightened size to make the glow smaller (-40 instead of -100)
+GlowHolder.Position = UDim2.new(0, -40, 0, -40)
+GlowHolder.Size = UDim2.new(1, 80, 1, 80)
+GlowHolder.ZIndex = 0
+GlowHolder.Parent = MainFrame
+
+local OuterGlow = Instance.new("ImageLabel")
+OuterGlow.Name = "OuterGlow"
+OuterGlow.BackgroundTransparency = 1
+OuterGlow.Size = UDim2.new(1, 0, 1, 0)
+OuterGlow.ZIndex = 0
+OuterGlow.Image = "rbxassetid://1316045217"
+OuterGlow.ImageTransparency = 0.3 -- Softened slightly to blend cleaner
+OuterGlow.ScaleType = Enum.ScaleType.Stretch
+OuterGlow.Parent = GlowHolder
+
+-- [[ THE FIX FOR ROUNDING OUT THE GLOW BLUR ]]
+-- This rounds the image container box perfectly so it stops looking like a square block!
+local GlowCorner = Instance.new("UICorner")
+GlowCorner.CornerRadius = UDim.new(0, 35) -- Curves the outer halo safely around the menu edges
+GlowCorner.Parent = OuterGlow
+
+-- Header
+local TitleBackdrop = Instance.new("Frame")
+TitleBackdrop.Size = UDim2.new(0, 240, 0, 65) 
+TitleBackdrop.Position = UDim2.new(0.5, -120, 0, -30)
+TitleBackdrop.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+TitleBackdrop.Parent = MainFrame
+Instance.new("UICorner", TitleBackdrop)
+
+local MainTitle = Instance.new("TextLabel")
+MainTitle.Size = UDim2.new(1, 0, 0, 35)
+MainTitle.Position = UDim2.new(0, 0, 0, 8)
+MainTitle.BackgroundTransparency = 1
+MainTitle.Text = "DHL V3"
+MainTitle.Font = Enum.Font.GothamBold
+MainTitle.TextSize = 28
+MainTitle.Parent = TitleBackdrop
+addOutline(MainTitle)
+
+local Subtitle = Instance.new("TextLabel")
+Subtitle.Size = UDim2.new(1, 0, 0, 20)
+Subtitle.Position = UDim2.new(0, 0, 0, 36)
+Subtitle.BackgroundTransparency = 1
+Subtitle.Text = "By vzxcvxcvx"
+Subtitle.Font = Enum.Font.GothamBold
+Subtitle.TextSize = 14
+Subtitle.Parent = TitleBackdrop
+addOutline(Subtitle)
+
+-- // ESP LOGIC (PERSISTENT & CYAN)
+local ActiveESP = {}
+
+local function applyESP(p)
+    local function doESP(char)
+        if not char then return end
+        task.wait(0.3) -- Wait for character assembly
+        
+        -- Cyan Highlight
+        local h = char:FindFirstChild("DHL_ESP") or Instance.new("Highlight")
+        h.Name = "DHL_ESP"
+        h.FillColor = Color3.fromRGB(0, 255, 255) -- Cyan
+        h.OutlineColor = Color3.new(1, 1, 1)
+        h.Parent = char
+        
+        -- Cyan Tag
+        local head = char:WaitForChild("Head", 5)
+        if head then
+            local b = head:FindFirstChild("DHL_TAG") or Instance.new("BillboardGui")
+            b.Name = "DHL_TAG"
+            b.Size = UDim2.new(0, 200, 0, 50)
+            b.AlwaysOnTop = true
+            b.ExtentsOffset = Vector3.new(0, 3, 0)
+            b.Parent = head
+            
+            local l = b:FindFirstChildOfClass("TextLabel") or Instance.new("TextLabel")
+            l.Size = UDim2.new(1, 0, 1, 0)
+            l.BackgroundTransparency = 1
+            l.Text = p.DisplayName
+            l.TextColor3 = Color3.fromRGB(0, 255, 255) -- Cyan
+            l.Font = Enum.Font.GothamBold
+            l.TextSize = 18
+            l.Parent = b
+            if not l:FindFirstChildOfClass("UIStroke") then addOutline(l) end
+        end
+    end
+    
+    if ActiveESP[p.UserId] then ActiveESP[p.UserId]:Disconnect() end
+    ActiveESP[p.UserId] = p.CharacterAdded:Connect(doESP)
+    if p.Character then doESP(p.Character) end
+end
+
+local function removeESP(p)
+    if ActiveESP[p.UserId] then 
+        ActiveESP[p.UserId]:Disconnect()
+        ActiveESP[p.UserId] = nil
+    end
+    if p.Character then
+        if p.Character:FindFirstChild("DHL_ESP") then p.Character.DHL_ESP:Destroy() end
+        local head = p.Character:FindFirstChild("Head")
+        if head and head:FindFirstChild("DHL_TAG") then head.DHL_TAG:Destroy() end
+    end
+end
+
+-- // Panel Setup
+local function createPanel(name, pos)
+    local p = Instance.new("Frame")
+    p.Size = UDim2.new(0.31, 0, 0.82, 0)
+    p.Position = pos
+    p.BackgroundColor3 = Color3.new(0, 0, 0)
+    p.BackgroundTransparency = 0.75
+    p.Parent = MainFrame
+    Instance.new("UICorner", p)
+    
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, 0, 0, 35)
+    l.Position = UDim2.new(0, 0, 0, -40)
+    l.BackgroundTransparency = 1
+    l.Text = name
+    l.TextColor3 = Color3.new(1, 1, 1)
+    l.Font = Enum.Font.GothamBold
+    l.TextSize = 18
+    l.Parent = p
+    addOutline(l)
+    return p
+end
+
+local LeftPanel = createPanel("Spectate Player", UDim2.new(0.02, 0, 0.15, 0))
+local MidPanel = createPanel("CamLock & ESP", UDim2.new(0.345, 0, 0.15, 0))
+local RightPanel = createPanel("Settings & GUI", UDim2.new(0.67, 0, 0.15, 0))
+
+local function createScroll(parent, offset)
+    local s = Instance.new("ScrollingFrame")
+    s.Size = UDim2.new(1, -10, 1, offset or -10)
+    s.Position = UDim2.new(0, 5, 0, (offset and offset < 0) and math.abs(offset)+5 or 5)
+    s.BackgroundTransparency = 1
+    s.ScrollBarThickness = 4
+    s.CanvasSize = UDim2.new(0, 0, 8, 0)
+    s.Parent = parent
+    Instance.new("UIListLayout", s).Padding = UDim.new(0, 10)
+    return s
+end
+
+local SpectateScroll = createScroll(LeftPanel, -60)
+local CamlockScroll = createScroll(MidPanel, -65)
+local SettingsScroll = createScroll(RightPanel, -5)
+
+local SearchBox = Instance.new("TextBox")
+SearchBox.Size = UDim2.new(0.9, 0, 0, 35)
+SearchBox.Position = UDim2.new(0.05, 0, 0, 12)
+SearchBox.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+SearchBox.PlaceholderText = "Search Players..."
+SearchBox.Text = "" -- Fixes the bug by forcing the box to start completely blank
+SearchBox.TextColor3 = Color3.new(1, 1, 1)
+SearchBox.Font = Enum.Font.GothamBold
+SearchBox.TextSize = 15
+SearchBox.ClearTextOnFocus = true -- Clears any text automatically when clicked
+SearchBox.Parent = MidPanel
+Instance.new("UICorner", SearchBox)
+addOutline(SearchBox)
+CamlockScroll.Position = UDim2.new(0, 5, 0, 55)
+
+local function updateLists()
+    for _, s in pairs({SpectateScroll, CamlockScroll}) do
+        for _, c in pairs(s:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
+    end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p == LocalPlayer then continue end
+        if Config.SearchText ~= "" and not string.find(p.DisplayName:lower(), Config.SearchText:lower()) then continue end
+        
+        local function createBtn(scroll, isSelect)
+            local b = Instance.new("TextButton", scroll)
+            b.Size = UDim2.new(1, -10, 0, 50)
+            b.BackgroundColor3 = (isSelect and Config.SelectedPlayers[p.UserId]) and Config.MainColor or Color3.fromRGB(25, 25, 25)
+            b.Text = "  " .. p.DisplayName; b.TextColor3 = (isSelect and Config.SelectedPlayers[p.UserId]) and Color3.new(0,0,0) or Color3.new(1,1,1)
+            b.TextXAlignment = Enum.TextXAlignment.Left; b.Font = Enum.Font.GothamBold; b.TextSize = 20
+            Instance.new("UICorner", b); addOutline(b)
+            return b
+        end
+
+        createBtn(SpectateScroll, false).MouseButton1Click:Connect(function() Camera.CameraSubject = p.Character.Humanoid end)
+        createBtn(CamlockScroll, true).MouseButton1Click:Connect(function()
+            Config.SelectedPlayers[p.UserId] = not Config.SelectedPlayers[p.UserId]
+            if Config.SelectedPlayers[p.UserId] then applyESP(p) else removeESP(p) end
+            updateLists()
+        end)
+    end
+end
+
+-- Persistence on Rejoin
+Players.PlayerAdded:Connect(function(p)
+    if Config.SelectedPlayers[p.UserId] then applyESP(p) end
+    updateLists()
+end)
+Players.PlayerRemoving:Connect(updateLists)
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function() Config.SearchText = SearchBox.Text updateLists() end)
+
+local StopBtn = Instance.new("TextButton", LeftPanel)
+StopBtn.Size = UDim2.new(0.9, 0, 0, 45); StopBtn.Position = UDim2.new(0.05, 0, 1, -52); StopBtn.BackgroundColor3 = Color3.fromRGB(50, 10, 10)
+StopBtn.Text = "Stop Spectating"; StopBtn.TextColor3 = Color3.new(1, 1, 1); StopBtn.Font = Enum.Font.GothamBold; StopBtn.TextSize = 16
+Instance.new("UICorner", StopBtn); addOutline(StopBtn)
+StopBtn.MouseButton1Click:Connect(function() Camera.CameraSubject = LocalPlayer.Character.Humanoid end)
+
+-- // THEME UPDATE
+local SyncToggles = {}
+local function updateTheme()
+    local main = Color3.fromHSV(Config.Hue, Config.Sat, Config.Val)
+    local darkShade = Color3.fromHSV(Config.Hue, Config.Sat, Config.Val * 0.4)
+    Config.MainColor = main
+    BGGradient.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.new(0,0,0)), ColorSequenceKeypoint.new(1, main)})
+    OuterGlow.ImageColor3 = main
+    MainTitle.TextColor3 = main
+    Subtitle.TextColor3 = main
+    for btn, cfgKey in pairs(SyncToggles) do
+        btn.BackgroundColor3 = Config[cfgKey] and darkShade or Color3.fromRGB(35, 35, 35)
+        btn.Text = (cfgKey == "Enabled" and "Camlock System: " or "Wall Check: ") .. (Config[cfgKey] and "ON" or "OFF")
+    end
+    SettingsScroll.ScrollBarImageColor3 = darkShade; updateLists()
+end
+
+local function createToggle(name, cfgKey)
+    local b = Instance.new("TextButton", SettingsScroll)
+    b.Size = UDim2.new(0.95, 0, 0, 52); b.TextColor3 = Color3.new(1, 1, 1); b.Font = Enum.Font.GothamBold; b.TextSize = 18
+    Instance.new("UICorner", b); addOutline(b); SyncToggles[b] = cfgKey
+    b.MouseButton1Click:Connect(function() Config[cfgKey] = not Config[cfgKey] updateTheme() end)
+end
+
+local function createSlider(name, min, max, cfgKey)
+    local f = Instance.new("Frame", SettingsScroll); f.Size = UDim2.new(0.95, 0, 0, 65); f.BackgroundTransparency = 1
+    local l = Instance.new("TextLabel", f); l.Size = UDim2.new(1, 0, 0, 30); l.Text = name .. ": " .. string.format("%.3f", Config[cfgKey]); l.TextColor3 = Color3.new(1, 1, 1); l.Font = Enum.Font.GothamBold; l.TextSize = 18; l.BackgroundTransparency = 1; addOutline(l)
+    local bar = Instance.new("Frame", f); bar.Size = UDim2.new(1, 0, 0, 6); bar.Position = UDim2.new(0, 0, 0.75, 0); bar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    local k = Instance.new("Frame", bar); k.Size = UDim2.new(0, 20, 0, 20); k.AnchorPoint = Vector2.new(0.5, 0.5); k.Position = UDim2.new((Config[cfgKey]-min)/(max-min), 0, 0.5, 0); k.BackgroundColor3 = Color3.new(1,1,1); Instance.new("UICorner", k).CornerRadius = UDim.new(1, 0)
+    
+    local move = false
+    k.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then move = true; Config.IsInteracting = true end end)
+    UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then move = false; Config.IsInteracting = false end end)
+    RunService.RenderStepped:Connect(function()
+        if move then
+            local p = math.clamp((UserInputService:GetMouseLocation().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+            k.Position = UDim2.new(p, 0, 0.5, 0); Config[cfgKey] = min + (max-min)*p; l.Text = name .. ": " .. string.format("%.3f", Config[cfgKey])
+        end
+    end)
+end
+
+local function createDropdown(name, options, callback)
+    local b = Instance.new("TextButton", SettingsScroll)
+    b.Size = UDim2.new(0.95, 0, 0, 52); b.BackgroundColor3 = Color3.fromRGB(30, 30, 30); b.Text = name .. ": " .. options[1]; b.TextColor3 = Color3.new(1, 1, 1); b.Font = Enum.Font.GothamBold; b.TextSize = 16
+    Instance.new("UICorner", b); addOutline(b); local idx = 1
+    b.MouseButton1Click:Connect(function()
+        idx = idx + 1 if idx > #options then idx = 1 end
+        b.Text = name .. ": " .. options[idx]; callback(options[idx])
+    end)
+end
+
+-- // RAINBOW COLOR PICKER FIX
+local Picker = Instance.new("Frame", SettingsScroll); Picker.Size = UDim2.new(0, 240, 0, 130); Instance.new("UICorner", Picker)
+local s_img = Instance.new("ImageLabel", Picker); s_img.Size = UDim2.new(1,0,1,0); s_img.Image = "rbxassetid://4155801252"; s_img.BackgroundTransparency = 1
+local v_img = Instance.new("ImageLabel", Picker); v_img.Size = UDim2.new(1,0,1,0); v_img.Image = "rbxassetid://4155806280"; v_img.BackgroundTransparency = 1
+local HueS = Instance.new("Frame", SettingsScroll); HueS.Size = UDim2.new(0, 240, 0, 18); Instance.new("UICorner", HueS)
+
+-- Rainbow Gradient for Hue Slider
+local h_grad = Instance.new("UIGradient", HueS)
+h_grad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
+    ColorSequenceKeypoint.new(0.16, Color3.fromHSV(0.16, 1, 1)),
+    ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
+    ColorSequenceKeypoint.new(0.66, Color3.fromHSV(0.66, 1, 1)),
+    ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
+    ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1))
+})
+
+local pickMode = false
+Picker.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then pickMode = "sv"; Config.IsInteracting = true end end)
+HueS.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then pickMode = "h"; Config.IsInteracting = true end end)
+UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then pickMode = false; Config.IsInteracting = false end end)
+RunService.RenderStepped:Connect(function()
+    if pickMode == "sv" then
+        Config.Sat = math.clamp((UserInputService:GetMouseLocation().X - Picker.AbsolutePosition.X)/Picker.AbsoluteSize.X, 0, 1)
+        Config.Val = 1 - math.clamp((UserInputService:GetMouseLocation().Y - (Picker.AbsolutePosition.Y+36))/Picker.AbsoluteSize.Y, 0, 1); updateTheme()
+    elseif pickMode == "h" then
+        Config.Hue = math.clamp((UserInputService:GetMouseLocation().X - HueS.AbsolutePosition.X)/HueS.AbsoluteSize.X, 0, 1); Picker.BackgroundColor3 = Color3.fromHSV(Config.Hue, 1, 1); updateTheme()
+    end
+end)
+
+createToggle("Camlock System", "Enabled"); createToggle("Wall Check", "WallCheck")
+createDropdown("Keybind Mode", {"Right Mouse Click", "Left Mouse Click", "E", "F"}, function(v) Config.ActivationMode = v end)
+createSlider("Smoothness", 0.01, 1, "Smoothness")
+createSlider("Prediction", 0.01, 0.5, "Prediction")
+createDropdown("Target Part", {"HumanoidRootPart", "Head", "Legs"}, function(v) Config.TargetPart = v == "Legs" and "LeftLowerLeg" or v end)
+
+-- // DRAGGING & TOGGLE
+-- Ensure your MainFrame can support blurring and seamless fading
+if MainFrame:IsA("Frame") and not MainFrame:FindFirstChildOfClass("UICorner") then
+    -- Make sure UI corner values stay sharp if structural modifications happen
+    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 15)
+end
+
+-- Make sure you have a Lighting service defined at the very top of your script if you don't already!
+local Lighting = game:GetService("Lighting")
+
+-- Create Snowflake Container Inside MainFrame if it doesn't exist
+-- Create Dot Container Inside MainFrame if it doesn't exist
+local SnowflakeContainer = MainFrame:FindFirstChild("SnowflakeContainer")
+if not SnowflakeContainer then
+    SnowflakeContainer = Instance.new("Frame")
+    SnowflakeContainer.Name = "SnowflakeContainer"
+    SnowflakeContainer.Size = UDim2.new(1, 0, 1, 0)
+    SnowflakeContainer.BackgroundTransparency = 1
+    SnowflakeContainer.ClipsDescendants = true -- Keeps dots strictly contained inside your GUI window borders
+    SnowflakeContainer.ZIndex = MainFrame.ZIndex + 1
+    SnowflakeContainer.Parent = MainFrame
+end
+
+local activeFlakes = {}
+local isSnowing = false
+
+-- Lightweight loop to drift clean little white dots down your UI
+local SnowflakeContainer = MainFrame:FindFirstChild("SnowflakeContainer")
+if not SnowflakeContainer then
+    SnowflakeContainer = Instance.new("Frame")
+    SnowflakeContainer.Name = "SnowflakeContainer"
+    SnowflakeContainer.Size = UDim2.new(1, 0, 1, 0)
+    SnowflakeContainer.BackgroundTransparency = 1
+    SnowflakeContainer.ClipsDescendants = true -- Keeps dots strictly contained inside your GUI window borders
+    SnowflakeContainer.ZIndex = MainFrame.ZIndex + 1
+    SnowflakeContainer.Parent = MainFrame
+end
+
+local activeFlakes = {}
+local isSnowing = false
+
+-- Lightweight loop to drift clean little white dots down your UI
+local function startSnowEffect()
+    if isSnowing then return end
+    isSnowing = true
+    
+    task.spawn(function()
+        while isSnowing and MainFrame.Visible == true do
+            task.wait(0.12) -- Slightly increased delay between spawns so it's less crowded
+            
+            local dot = Instance.new("TextLabel")
+            dot.BackgroundTransparency = 1
+            dot.Text = "•"
+            dot.TextSize = math.random(10, 14) -- Slightly smaller sizes so they look neat and clean
+            dot.TextColor3 = Color3.fromRGB(255, 255, 255)
+            
+            -- [[ FIXED TRANSPARENCY SHIFT ]]
+            -- Originally 0.2 to 0.6. Changing it to 0.65 to 0.88 makes them much more transparent and hidden!
+            dot.TextTransparency = math.random(65, 88) / 100 
+            
+            dot.Size = UDim2.new(0, 12, 0, 12)
+            dot.Position = UDim2.new(math.random(), 0, -0.05, 0)
+            dot.ZIndex = SnowflakeContainer.ZIndex
+            dot.Parent = SnowflakeContainer
+            
+            table.insert(activeFlakes, dot)
+            
+            local fallTime = math.random(30, 55) / 10 -- Made them drift down slightly slower for a calmer vibe
+            local drift = (math.random() - 0.5) * 0.08
+            
+            local dropTween = TweenService:Create(dot, TweenInfo.new(fallTime, Enum.EasingStyle.Linear), {
+                Position = UDim2.new(dot.Position.X.Scale + drift, 0, 1.05, 0)
+            })
+            dropTween:Play()
+            
+            -- Automated garbage collection clean up
+            dropTween.Completed:Connect(function()
+                dot:Destroy()
+                local idx = table.find(activeFlakes, dot)
+                if idx then table.remove(activeFlakes, idx) end
+            end)
+        end
+    end)
+end
+
+
+local function stopSnowEffect()
+    isSnowing = false
+    for _, dot in pairs(activeFlakes) do
+        TweenService:Create(dot, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {TextTransparency = 1}):Play()
+        task.delay(0.15, function() dot:Destroy() end)
+    end
+    table.clear(activeFlakes)
+end
+
+-- [[ THE TOGGLE MENU FUNCTION ]]
+local function toggleMenu()
+    Config.Visible = not Config.Visible
+    
+    local startSize = Config.Visible and UDim2.new(0, 150, 0, 95) or MainFrame.Size
+    local targetSize = Config.Visible and UDim2.new(0, 860, 0, 540) or UDim2.new(0, 150, 0, 95)
+    local targetTransparency = Config.Visible and 0.45 or 1
+    
+    if Config.Visible then
+        MainFrame.Size = startSize
+        MainFrame.BackgroundTransparency = 1 
+        MainFrame.BackgroundColor3 = Color3.fromRGB(15, 10, 10)
+        MainFrame.Visible = true
+        
+        task.defer(function()
+            if Config.Visible then
+                startSnowEffect()
+            end
+        end)
+    else
+        stopSnowEffect()
+    end
+    
+    local sizeTween = TweenService:Create(MainFrame, TweenInfo.new(
+        0.45, 
+        Enum.EasingStyle.Back, 
+        Config.Visible and Enum.EasingDirection.Out or Enum.EasingDirection.In
+    ), {Size = targetSize})
+    
+    local transparencyTween = TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        BackgroundTransparency = targetTransparency
+    })
+    
+    sizeTween:Play()
+    transparencyTween:Play()
+    
+    sizeTween.Completed:Connect(function()
+        if not Config.Visible then
+            MainFrame.Visible = false
+        end
+    end)
+end
+
+-- [[ FIX: ABSOLUTE INITIALIZATION FORCE STEP ]]
+-- This completely hijacks the frame settings on execution, forcing the perfect transparency before you can even hit a single button.
+local function forceInitUI()
+    MainFrame.BackgroundTransparency = 0.45
+    MainFrame.BackgroundColor3 = Color3.fromRGB(15, 10, 10)
+    MainFrame.Size = UDim2.new(0, 860, 0, 540)
+    
+    if Config.Visible == nil then Config.Visible = true end
+    MainFrame.Visible = Config.Visible
+    
+    if Config.Visible then
+        task.defer(startSnowEffect)
+    else
+        stopSnowEffect()
+    end
+end
+
+-- Run initialization instantly, and run it slightly delayed just in case other parts of your script try to overwrite it during startup.
+forceInitUI()
+task.delay(0.1, forceInitUI)
+
+local dragging, dragStart, startPos
+MainFrame.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 and not Config.IsInteracting then dragging = true; dragStart = i.Position; startPos = MainFrame.Position end end)
+UserInputService.InputChanged:Connect(function(i) if dragging and i.UserInputType == Enum.UserInputType.MouseMovement then
+    local d = i.Position - dragStart; MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+end end)
+UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end end)
+
+UserInputService.InputBegan:Connect(function(i, g)
+    if g then return end
+    if i.KeyCode == Enum.KeyCode.V then toggleMenu() end
+    
+    if i.KeyCode == Enum.KeyCode.Y then
+        Config.Enabled = not Config.Enabled
+        updateTheme()
+    end
+    if i.KeyCode == Enum.KeyCode.P then
+        Config.WallCheck = not Config.WallCheck
+        updateTheme()
+    end
+
+    if i.UserInputType == KeyMap[Config.ActivationMode] or i.KeyCode == KeyMap[Config.ActivationMode] then
+        local t, d = nil, 2000
+        for id, active in pairs(Config.SelectedPlayers) do
+            if active then
+                local p = Players:GetPlayerByUserId(id)
+                if p and p.Character and p.Character:FindFirstChild(Config.TargetPart) then
+                    local screenPos, on = Camera:WorldToViewportPoint(p.Character[Config.TargetPart].Position)
+                    if on then
+                        local mag = (Vector2.new(screenPos.X, screenPos.Y) - UserInputService:GetMouseLocation()).Magnitude
+                        if mag < d then t = p; d = mag end
+                    end
+                end
+            end
+        end
+        Config.Target = t; Config.IsHolding = true
+    end
+end)
+UserInputService.InputEnded:Connect(function(i) if i.UserInputType == KeyMap[Config.ActivationMode] or i.KeyCode == KeyMap[Config.ActivationMode] then Config.IsHolding = false end end)
+
+RunService.RenderStepped:Connect(function()
+    if Config.Enabled and Config.IsHolding and Config.Target and Config.Target.Character then
+        local char = Config.Target.Character
+        local part = char:FindFirstChild(Config.TargetPart)
+        
+        -- [[ UNLOCK IF DEAD, RAGDOLLED, OR KNOCKED OUT ]]
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        local bodyEffects = char:FindFirstChild("BodyEffects")
+        local koTag = bodyEffects and (bodyEffects:FindFirstChild("KO") or bodyEffects:FindFirstChild("K.O"))
+        local isKO = koTag and koTag.Value == true
+        
+        if (humanoid and humanoid.Health <= 1) or isKO or (humanoid and (humanoid:GetState() == Enum.HumanoidStateType.Physics or humanoid:GetState() == Enum.HumanoidStateType.Dead)) then
+            Config.Target = nil -- Instantly unlocks
+            return
+        end
+        -- [[ END OF UNLOCK CODE ]]
+
+        if part then
+            if Config.WallCheck and #Camera:GetPartsObscuringTarget({Camera.CFrame.Position, part.Position}, {LocalPlayer.Character, char}) > 0 then return end
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, part.Position + (part.Velocity * Config.Prediction)), Config.Smoothness)
+        end
+    end
+end)
+
+updateTheme(); updateLists()
